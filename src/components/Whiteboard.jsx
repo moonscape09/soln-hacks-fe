@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Stage, Layer, Circle, Line, Text } from 'react-konva';
+import { Stage, Layer, Circle, Line, Text, Rect } from 'react-konva';
 
 const Whiteboard = () => {
   const [isDrawing, setIsDrawing] = useState(false);
@@ -10,12 +10,49 @@ const Whiteboard = () => {
   const isDrawingRef = useRef(false);
 
   const [shapes] = useState([
-    { type: 'circle', x: 200, y: 150, radius: 50, fill: 'skyblue' },
-    { type: 'text', x: 170, y: 145, text: 'Root' },
-    { type: 'line', points: [200, 200, 150, 300] },
-    { type: 'circle', x: 150, y: 350, radius: 40, fill: 'pink' },
-    { type: 'text', x: 135, y: 345, text: 'Left' },
+    {
+      "type":"rectangle",
+      "x":100,
+      "y":100,
+      "width":100,
+      "height":60,
+      "radius":null,
+      "radiusX":null,
+      "radiusY":null,
+      "color":"blue"},
+    {
+      "type":"rectangle",
+      "x":220,
+      "y":100,
+      "width":100,
+      "height":60,
+      "radius":null,
+      "radiusX":null,
+      "radiusY":null,
+      "color":"blue"
+    },
+    {"type":"circle",
+      "x":540,
+      "y":200,
+      "width":null,
+      "height":null,
+      "radius":50,
+      "radiusX":null,
+      "radiusY":null,
+      "color":"red"
+    }
   ]);
+
+  const [texts] = useState([
+    {
+      "text":"hello world",
+      "x":200,
+      "y":350,
+      "fontSize":28,
+      "color":"purple"
+    }
+  ])
+
 
   const handleMouseDown = (e) => {
     if (!drawingMode) return;
@@ -91,10 +128,35 @@ const Whiteboard = () => {
                   lineJoin="round"
                 />
               );
-            } else {
+            } else if (shape.type === 'rectangle') {
+                return (
+                <Rect
+                  key={i}
+                  x={shape.x}
+                  y={shape.y}
+                  width={shape.width}
+                  height={shape.height}
+                  fill={shape.color}
+                  draggable={!drawingMode}
+                />
+                );
+            }
+            else {
               return null;
             }
           })}
+
+            {texts.map((textObj, i) => (
+            <Text
+              key={`text-${i}`}
+              x={textObj.x}
+              y={textObj.y}
+              text={textObj.text}
+              fontSize={textObj.fontSize}
+              fill={textObj.color}
+              draggable={!drawingMode}
+            />
+          ))}
 
           {lines.map((line, i) => (
             <Line
@@ -107,6 +169,7 @@ const Whiteboard = () => {
               globalCompositeOperation="source-over"
             />
           ))}
+    
         </Layer>
       </Stage>
     </div>
