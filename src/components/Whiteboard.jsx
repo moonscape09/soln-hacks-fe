@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Stage, Layer, Circle, Line, Text, Rect } from 'react-konva';
+import { Hand, Pencil, Eraser } from 'lucide-react';
 
 const BOARD_BG = '#f7f8fa';
 const TOOLBAR_BG = '#fff';
@@ -10,9 +11,14 @@ const BUTTON_BG = '#2563eb';
 const BUTTON_BG_ACTIVE = '#1e40af';
 const BUTTON_COLOR = '#fff';
 
+const DRAW_MODES = {
+  PAN: 'pan',
+  PEN: 'pen',
+  ERASER: 'eraser',
+};
+
 const Whiteboard = () => {
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingMode, setDrawingMode] = useState(false);
+  const [drawMode, setDrawMode] = useState(DRAW_MODES.PAN);
   const [lines, setLines] = useState([]);
   const isDrawingRef = useRef(false);
 
@@ -65,7 +71,7 @@ const Whiteboard = () => {
 
   // Pan handlers
   const handleStageMouseDown = (e) => {
-    if (drawingMode) {
+    if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseDown(e);
       return;
     }
@@ -76,7 +82,7 @@ const Whiteboard = () => {
   };
 
   const handleStageMouseMove = (e) => {
-    if (drawingMode) {
+    if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseMove(e);
       return;
     }
@@ -91,7 +97,7 @@ const Whiteboard = () => {
   };
 
   const handleStageMouseUp = (e) => {
-    if (drawingMode) {
+    if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseUp(e);
       return;
     }
@@ -100,14 +106,19 @@ const Whiteboard = () => {
 
   // Drawing handlers
   const handleMouseDown = (e) => {
-    if (!drawingMode) return;
-    isDrawingRef.current = true;
-    const pos = e.target.getStage().getPointerPosition();
-    setLines([...lines, { points: [pos.x - stagePos.x, pos.y - stagePos.y] }]);
+    if (drawMode === DRAW_MODES.PEN) {
+      isDrawingRef.current = true;
+      const pos = e.target.getStage().getPointerPosition();
+      setLines([...lines, { points: [pos.x - stagePos.x, pos.y - stagePos.y], mode: DRAW_MODES.PEN }]);
+    } else if (drawMode === DRAW_MODES.ERASER) {
+      isDrawingRef.current = true;
+      const pos = e.target.getStage().getPointerPosition();
+      setLines([...lines, { points: [pos.x - stagePos.x, pos.y - stagePos.y], mode: DRAW_MODES.ERASER }]);
+    }
   };
 
   const handleMouseMove = (e) => {
-    if (!isDrawingRef.current || !drawingMode) return;
+    if (!isDrawingRef.current || (drawMode !== DRAW_MODES.PEN && drawMode !== DRAW_MODES.ERASER)) return;
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
     const lastLine = lines[lines.length - 1];
@@ -162,39 +173,85 @@ const Whiteboard = () => {
           maxWidth: 520,
           display: 'flex',
           alignItems: 'center',
-          gap: 24,
+          gap: 16,
           zIndex: 2,
         }}
       >
         <button
-          onClick={() => setDrawingMode(!drawingMode)}
+          onClick={() => setDrawMode(DRAW_MODES.PAN)}
           style={{
-            background: drawingMode ? BUTTON_BG_ACTIVE : BUTTON_BG,
+            background: drawMode === DRAW_MODES.PAN ? BUTTON_BG_ACTIVE : BUTTON_BG,
             color: BUTTON_COLOR,
             border: 'none',
             borderRadius: 8,
-            padding: '10px 24px',
+            padding: '10px',
             fontWeight: 600,
-            fontSize: 18,
+            fontSize: 20,
             cursor: 'pointer',
-            boxShadow: drawingMode
+            boxShadow: drawMode === DRAW_MODES.PAN
               ? '0 2px 8px rgba(37,99,235,0.15)'
               : '0 1px 4px rgba(0,0,0,0.04)',
             transition: 'background 0.2s, box-shadow 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 44,
+            height: 44,
           }}
+          title="Pan"
         >
-          {drawingMode ? '✋ Exit Pen Mode' : '🖊️ Enter Pen Mode'}
+          <Hand size={24} />
         </button>
-        <span
+        <button
+          onClick={() => setDrawMode(DRAW_MODES.PEN)}
           style={{
-            color: '#64748b',
-            fontSize: 16,
-            fontWeight: 500,
-            letterSpacing: 0.1,
+            background: drawMode === DRAW_MODES.PEN ? BUTTON_BG_ACTIVE : BUTTON_BG,
+            color: BUTTON_COLOR,
+            border: 'none',
+            borderRadius: 8,
+            padding: '10px',
+            fontWeight: 600,
+            fontSize: 20,
+            cursor: 'pointer',
+            boxShadow: drawMode === DRAW_MODES.PEN
+              ? '0 2px 8px rgba(37,99,235,0.15)'
+              : '0 1px 4px rgba(0,0,0,0.04)',
+            transition: 'background 0.2s, box-shadow 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 44,
+            height: 44,
           }}
+          title="Pen"
         >
-          {drawingMode ? 'Draw: drag to draw' : 'Pan: drag to move board'}
-        </span>
+          <Pencil />
+        </button>
+        <button
+          onClick={() => setDrawMode(DRAW_MODES.ERASER)}
+          style={{
+            background: drawMode === DRAW_MODES.ERASER ? BUTTON_BG_ACTIVE : BUTTON_BG,
+            color: BUTTON_COLOR,
+            border: 'none',
+            borderRadius: 8,
+            padding: '10px',
+            fontWeight: 600,
+            fontSize: 20,
+            cursor: 'pointer',
+            boxShadow: drawMode === DRAW_MODES.ERASER
+              ? '0 2px 8px rgba(37,99,235,0.15)'
+              : '0 1px 4px rgba(0,0,0,0.04)',
+            transition: 'background 0.2s, box-shadow 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 44,
+            height: 44,
+          }}
+          title="Eraser"
+        >
+          <Eraser />
+        </button>
       </div>
 
       <div
@@ -220,7 +277,12 @@ const Whiteboard = () => {
           onMouseup={handleStageMouseUp}
           style={{
             background: '#fff',
-            cursor: drawingMode ? 'crosshair' : 'grab',
+            cursor:
+              drawMode === DRAW_MODES.PEN
+                ? 'crosshair'
+                : drawMode === DRAW_MODES.ERASER
+                ? 'cell'
+                : 'grab',
             transition: 'background 0.2s',
             width: '100vw',
             height: '100vh',
@@ -239,7 +301,7 @@ const Whiteboard = () => {
                     fill={shape.color}
                     shadowBlur={shape.shadow ? 16 : 0}
                     shadowColor={shape.color}
-                    draggable={!drawingMode}
+                    draggable={drawMode === DRAW_MODES.PAN}
                   />
                 );
               } else if (shape.type === 'rectangle') {
@@ -254,7 +316,7 @@ const Whiteboard = () => {
                     cornerRadius={shape.cornerRadius}
                     shadowBlur={shape.shadow ? 16 : 0}
                     shadowColor={shape.color}
-                    draggable={!drawingMode}
+                    draggable={drawMode === DRAW_MODES.PAN}
                   />
                 );
               }
@@ -272,7 +334,7 @@ const Whiteboard = () => {
                 fontStyle={textObj.fontStyle || 'normal'}
                 shadowBlur={textObj.shadow ? 8 : 0}
                 shadowColor={textObj.color}
-                draggable={!drawingMode}
+                draggable={drawMode === DRAW_MODES.PAN}
               />
             ))}
 
@@ -280,13 +342,13 @@ const Whiteboard = () => {
               <Line
                 key={`free-${i}`}
                 points={line.points}
-                stroke="#2563eb"
-                strokeWidth={3}
+                stroke={line.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
+                strokeWidth={line.mode === DRAW_MODES.ERASER ? 16 : 3}
                 tension={0.5}
                 lineCap="round"
-                globalCompositeOperation="source-over"
-                shadowBlur={4}
-                shadowColor="#2563eb"
+                globalCompositeOperation={line.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                shadowBlur={line.mode === DRAW_MODES.ERASER ? 0 : 4}
+                shadowColor={line.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
               />
             ))}
           </Layer>
