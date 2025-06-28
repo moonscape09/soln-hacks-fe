@@ -1,0 +1,45 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/.next
+/out
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# system files
+Thumbs.db
+ehthumbs.db
+
+# vscode
+.vscode
+
+# vercel
+.vercel
+
+# logs
+*.log
+logs
+*.log.*
+
+# local runtime data
+/.turbo
+
+# next.js cache
+.next/cache
+
+# OS-specific
+*.swp
