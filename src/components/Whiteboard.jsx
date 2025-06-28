@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { Stage, Layer, Circle, Line, Text, Rect } from 'react-konva';
+import { Stage, Layer, Circle, Line, Text, Rect, RegularPolygon, Ring, Arc, Arrow, Wedge } from 'react-konva';
 import { Hand, Pencil, Eraser } from 'lucide-react';
 
 const BOARD_BG = '#f7f8fa';
@@ -29,33 +29,53 @@ const Whiteboard = () => {
   const pointerStart = useRef({ x: 0, y: 0 });
 
   const [shapes] = useState([
-    {
-      type: 'rectangle',
-      x: 100,
-      y: 100,
-      width: 120,
-      height: 70,
-      color: '#60a5fa',
-    },
-    {
-      type: 'rectangle',
-      x: 260,
-      y: 100,
-      width: 120,
-      height: 70,
-      color: '#fbbf24',
-      shadow: true,
-      cornerRadius: 16,
-    },
-    {
-      type: 'circle',
-      x: 540,
-      y: 200,
-      radius: 50,
-      color: '#f87171',
-      shadow: true,
-    },
-  ]);
+  // --- Sun (wedge rays + center) ---
+  { "type": "wedge", "x": 700, "y": 80, "radius": 40, "angle": 60, "rotation": 20, "color": "orange", "stroke": "gold", "strokeWidth": 1 },
+  { "type": "wedge", "x": 700, "y": 80, "radius": 40, "angle": 60, "rotation": 140, "color": "orange", "stroke": "gold", "strokeWidth": 1 },
+  { "type": "wedge", "x": 700, "y": 80, "radius": 40, "angle": 60, "rotation": 260, "color": "orange", "stroke": "gold", "strokeWidth": 1 },
+  { "type": "circle", "x": 700, "y": 80, "radius": 20, "color": "yellow", "stroke": "gold", "strokeWidth": 2 },
+
+  // --- Grass/Lawn ---
+  { "type": "rectangle", "x": 0, "y": 300, "width": 800, "height": 200, "color": "#a8e6cf" },
+
+  // --- House Base ---
+  { "type": "rectangle", "x": 200, "y": 250, "width": 200, "height": 120, "color": "#f4a261", "stroke": "black", "strokeWidth": 2 },
+  { "type": "text", "x": 260, "y": 310, "text": "Home" },
+
+  // --- Roof (regular polygon as triangle) ---
+  { "type": "regularPolygon", "x": 300, "y": 230, "sides": 3, "radius": 115, "rotation": 0, "color": "#b5651d", "stroke": "black", "strokeWidth": 2 },
+
+  // --- Windows ---
+  { "type": "rectangle", "x": 225, "y": 270, "width": 30, "height": 30, "color": "#e0f7fa", "stroke": "black" },
+  { "type": "rectangle", "x": 345, "y": 270, "width": 30, "height": 30, "color": "#e0f7fa", "stroke": "black" },
+
+  // --- Door ---
+  { "type": "rectangle", "x": 285, "y": 300, "width": 30, "height": 70, "color": "#deb887", "stroke": "black" },
+
+  // --- Tree Trunk ---
+  { "type": "rectangle", "x": 100, "y": 280, "width": 20, "height": 60, "color": "#8B4513" },
+
+  // --- Tree Foliage (circle leaves) ---
+  { "type": "circle", "x": 110, "y": 260, "radius": 30, "color": "green", "stroke": "darkgreen" },
+
+  // --- Fence (picket style using vertical lines) ---
+  { "type": "line", "points": [180, 370, 180, 330], "stroke": "white", "strokeWidth": 4 },
+  { "type": "line", "points": [190, 370, 190, 330], "stroke": "white", "strokeWidth": 4 },
+  { "type": "line", "points": [200, 370, 200, 330], "stroke": "white", "strokeWidth": 4 },
+  { "type": "line", "points": [210, 370, 210, 330], "stroke": "white", "strokeWidth": 4 },
+  { "type": "line", "points": [220, 370, 220, 330], "stroke": "white", "strokeWidth": 4 },
+  { "type": "line", "points": [230, 370, 230, 330], "stroke": "white", "strokeWidth": 4 },
+
+  // --- River ---
+  { "type": "arc", "x": 600, "y": 400, "innerRadius": 0, "outerRadius": 120, "angle": 90, "rotation": 270, "color": "#00bcd4", "stroke": "#0077b6", "strokeWidth": 2 },
+
+  // --- Scene Label ---
+  { "type": "text", "x": 280, "y": 450, "text": "My Peaceful Sustainable Home", "fontSize": 18 }
+]
+
+
+
+);
 
   const [texts] = useState([
     {
@@ -319,24 +339,112 @@ const Whiteboard = () => {
                     draggable={drawMode === DRAW_MODES.PAN}
                   />
                 );
+              }else if (shape.type === 'text') {
+                return (
+                  <Text
+                  key={`text-${i}`}
+                  x={shape.x}
+                  y={shape.y}
+                  text={shape.text}
+                  fontSize={shape.fontSize}
+                  fill={shape.color}
+                  fontStyle={shape.fontStyle || 'normal'}
+                  shadowBlur={shape.shadow ? 8 : 0}
+                  shadowColor={shape.color}
+                  draggable={drawMode === DRAW_MODES.PAN}
+                />
+                );
+              }else if (shape.type === 'line') {
+                return (
+                  <Line
+                  key={`free-${i}`}
+                  points={shape.points}
+                  stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
+                  strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
+                  tension={0.5}
+                  lineCap="round"
+                  globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                  shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                  shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                  draggable={drawMode === DRAW_MODES.PAN}
+                />
+                );
+              }else if (shape.type === 'arrow') {
+                return (
+                  <Arrow
+                  key={`free-${i}`}
+                  points={shape.points}
+                  stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
+                  strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
+                  tension={0.5}
+                  lineCap="round"
+                  globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                  shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                  shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                  draggable={drawMode === DRAW_MODES.PAN}
+                />
+                );
+              }else if (shape.type === 'arc') {
+                return (
+                  <Arc
+                    key={i}
+                    x={shape.x}
+                    y={shape.y}
+                    innerRadius={shape.innerRadius}
+                    outerRadius={shape.outerRadius}
+                    fill={shape.color}
+                    shadowBlur={shape.shadow ? 16 : 0}
+                    shadowColor={shape.color}
+                    angle = {shape.angle}
+                    draggable={drawMode === DRAW_MODES.PAN}
+                  />
+                );
+              }else if (shape.type === 'ring') {
+                return (
+                  <Ring
+                    key={i}
+                    x={shape.x}
+                    y={shape.y}
+                    innerRadius={shape.innerRadius}
+                    outerRadius={shape.outerRadius}
+                    fill={shape.color}
+                    shadowBlur={shape.shadow ? 16 : 0}
+                    shadowColor={shape.color}
+                    draggable={drawMode === DRAW_MODES.PAN}
+                  />
+                );
+              }else if (shape.type === 'regularPolygon') {
+                return (
+                  <RegularPolygon
+                    key={i}
+                    x={shape.x}
+                    y={shape.y}
+                    sides = {shape.sides}
+                    radius = {shape.radius}
+                    fill={shape.color}
+                    shadowBlur={shape.shadow ? 16 : 0}
+                    shadowColor={shape.color}
+                    draggable={drawMode === DRAW_MODES.PAN}
+                  />
+                );
+              }else if (shape.type === 'wedge') {
+                return (
+                  <Wedge
+                    key={i}
+                    x={shape.x}
+                    y={shape.y}
+                    radius={shape.radius}
+                    rotation={shape.rotation}
+                    fill={shape.color}
+                    shadowBlur={shape.shadow ? 16 : 0}
+                    shadowColor={shape.color}
+                    angle = {shape.angle}
+                    draggable={drawMode === DRAW_MODES.PAN}
+                  />
+                );
               }
               return null;
             })}
-
-            {texts.map((textObj, i) => (
-              <Text
-                key={`text-${i}`}
-                x={textObj.x}
-                y={textObj.y}
-                text={textObj.text}
-                fontSize={textObj.fontSize}
-                fill={textObj.color}
-                fontStyle={textObj.fontStyle || 'normal'}
-                shadowBlur={textObj.shadow ? 8 : 0}
-                shadowColor={textObj.color}
-                draggable={drawMode === DRAW_MODES.PAN}
-              />
-            ))}
 
             {lines.map((line, i) => (
               <Line
@@ -349,6 +457,7 @@ const Whiteboard = () => {
                 globalCompositeOperation={line.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
                 shadowBlur={line.mode === DRAW_MODES.ERASER ? 0 : 4}
                 shadowColor={line.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                draggable={drawMode === DRAW_MODES.PAN}
               />
             ))}
           </Layer>
