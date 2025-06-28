@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Stage, Layer, Circle, Line, Text, Rect } from 'react-konva';
 import { Hand, Pencil, Eraser } from 'lucide-react';
 
@@ -28,7 +28,7 @@ const Whiteboard = () => {
   const panStart = useRef({ x: 0, y: 0 });
   const pointerStart = useRef({ x: 0, y: 0 });
 
-  const [shapes] = useState([
+  const [shapes, setShapes] = useState([
     {
       type: 'rectangle',
       x: 100,
@@ -57,7 +57,7 @@ const Whiteboard = () => {
     },
   ]);
 
-  const [texts] = useState([
+  const [texts, setTexts] = useState([
     {
       text: 'Hello, World!',
       x: 200,
@@ -68,6 +68,67 @@ const Whiteboard = () => {
       shadow: true,
     },
   ]);
+
+  // useEffect(() => console.log(lines), [lines])
+  const [connected, setConnected] = useState(false);
+  const [log, setLog] = useState([]);
+  const socketRef = useRef(null);
+
+useEffect(() => {
+  // only open once, and only for pen/eraser
+  if (
+    (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) &&
+    (!socketRef.current || socketRef.current.readyState > WebSocket.OPEN)
+  ) {
+    const socket = new WebSocket('ws://localhost:4000/ws');
+    socketRef.current = socket;
+
+    socket.addEventListener('open', () => {
+      setConnected(true);
+      appendLog('🔌 Connected');
+      // flush any queued messages here if you implement buffering…
+    });
+
+    socket.addEventListener('message', (event) => {
+      const msg = JSON.parse(event.data);
+      appendLog(`📥 ${event.data}`);
+      if (msg.type === 'draw_line') {
+        setLines((prev) => [...prev, msg.line]);
+      }
+    });
+
+    // socket.addEventListener('close', () => {
+    //   setConnected(false);
+    //   appendLog('🔌 Disconnected');
+    // });
+
+    socket.addEventListener('error', (err) => {
+      appendLog('❗ WebSocket error');
+      console.error(err);
+    });
+  }
+  // optional: tear down when you go back to PAN
+  if (drawMode === DRAW_MODES.PAN && socketRef.current) {
+    socketRef.current.close();
+  }
+}, [drawMode]);
+
+    // Helper to push to log
+    const appendLog = (entry) => {
+      setLog((l) => [...l, entry].slice(-50));
+    };
+
+    // 2. Function to send a JSON‐serializable payload
+    const sendMessage = (payload) => {
+      const socket = socketRef.current;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        const msg = JSON.stringify(payload);
+        socket.send(msg);
+        appendLog(`📤 ${msg}`);
+      } else {
+        appendLog('⚠️ Socket not open');
+      }
+    };
 
   // Pan handlers
   const handleStageMouseDown = (e) => {
@@ -109,11 +170,23 @@ const Whiteboard = () => {
     if (drawMode === DRAW_MODES.PEN) {
       isDrawingRef.current = true;
       const pos = e.target.getStage().getPointerPosition();
-      setLines([...lines, { points: [pos.x - stagePos.x, pos.y - stagePos.y], mode: DRAW_MODES.PEN }]);
+      setLines([...lines, {
+        points: [pos.x - stagePos.x, pos.y - stagePos.y],
+        stroke: '#2563eb',
+        strokeWidth: 3,
+        globalCompositeOperation: 'source-over',
+        lineCap: 'round',
+      }]);
     } else if (drawMode === DRAW_MODES.ERASER) {
       isDrawingRef.current = true;
       const pos = e.target.getStage().getPointerPosition();
-      setLines([...lines, { points: [pos.x - stagePos.x, pos.y - stagePos.y], mode: DRAW_MODES.ERASER }]);
+      setLines([...lines, {
+        points: [pos.x - stagePos.x, pos.y - stagePos.y],
+        stroke: '#fff',
+        strokeWidth: 16,
+        globalCompositeOperation: 'destination-out',
+        lineCap: 'round'
+      }]);
     }
   };
 
@@ -129,6 +202,8 @@ const Whiteboard = () => {
 
   const handleMouseUp = () => {
     isDrawingRef.current = false;
+    const recentLine = lines[lines.length - 1];
+    sendMessage(recentLine);
   };
 
   // Responsive sizing
@@ -342,13 +417,13 @@ const Whiteboard = () => {
               <Line
                 key={`free-${i}`}
                 points={line.points}
-                stroke={line.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
-                strokeWidth={line.mode === DRAW_MODES.ERASER ? 16 : 3}
+                stroke={line.stroke}
+                strokeWidth={line.strokeWidth}
                 tension={0.5}
-                lineCap="round"
-                globalCompositeOperation={line.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
-                shadowBlur={line.mode === DRAW_MODES.ERASER ? 0 : 4}
-                shadowColor={line.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                lineCap={line.lineCap}
+                globalCompositeOperation={line.globalCompositeOperation}
+                // shadowBlur={line.mode === DRAW_MODES.ERASER ? 0 : 4}
+                // shadowColor={line.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
               />
             ))}
           </Layer>
