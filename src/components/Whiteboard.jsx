@@ -30,8 +30,6 @@ const Whiteboard = () => {
       width: 120,
       height: 70,
       color: '#60a5fa',
-      shadow: true,
-      cornerRadius: 16,
     },
     {
       type: 'rectangle',
@@ -253,7 +251,7 @@ const Whiteboard = () => {
                     width={shape.width}
                     height={shape.height}
                     fill={shape.color}
-                    cornerRadius={shape.cornerRadius || 12}
+                    cornerRadius={shape.cornerRadius}
                     shadowBlur={shape.shadow ? 16 : 0}
                     shadowColor={shape.color}
                     draggable={!drawingMode}
