@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Circle, Line, Text, Rect, RegularPolygon, Ring, Arc, Arrow, Wedge } from 'react-konva';
-import { Hand, Pencil, Eraser } from 'lucide-react';
+import { Stage, Layer, Circle, Line, Text, Rect, RegularPolygon, Ring, Arc, Arrow, Wedge, Group } from 'react-konva';
+import { Hand, Pencil, Eraser, SquareDashed} from 'lucide-react';
+import { createObjectFromPrompt } from "../app/lib/api";
 
 const BOARD_BG = '#f7f8fa';
 const TOOLBAR_BG = '#fff';
@@ -15,12 +16,25 @@ const DRAW_MODES = {
   PAN: 'pan',
   PEN: 'pen',
   ERASER: 'eraser',
+  SELECT: 'select'
 };
 
 const Whiteboard = () => {
   const [popupVisible, setPopupVisible] = useState(false);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const [promptText, setPromptText] = useState("");
+
+  const [selectionBox, setSelectionBox] = useState(null);
+  const [selectedShapeIndices, setSelectedShapeIndices] = useState([]);
+
+  const [penSettingsVisible, setPenSettingsVisible] = useState(false);
+const [brushSettings, setBrushSettings] = useState({
+  strokeWidth: 3,
+  strokeColor: '#2563eb'
+});
+const penButtonRef = useRef(null);
+
+const penSettingsRef = useRef(null);
 
 
   const [drawMode, setDrawMode] = useState(DRAW_MODES.PAN);
@@ -33,7 +47,7 @@ const Whiteboard = () => {
   const panStart = useRef({ x: 0, y: 0 });
   const pointerStart = useRef({ x: 0, y: 0 });
 
-  const [shapes] = useState([
+  const [shapes, setShapes] = useState([
   // --- Sun (wedge rays + center) ---
   { "type": "wedge", "x": 700, "y": 80, "radius": 40, "angle": 60, "rotation": 20, "color": "orange", "stroke": "gold", "strokeWidth": 1 },
   { "type": "wedge", "x": 700, "y": 80, "radius": 40, "angle": 60, "rotation": 140, "color": "orange", "stroke": "gold", "strokeWidth": 1 },
@@ -77,10 +91,13 @@ const Whiteboard = () => {
   // --- Scene Label ---
   { "type": "text", "x": 280, "y": 450, "text": "My Peaceful Sustainable Home", "fontSize": 18 }
 ]
-
-
-
 );
+  // --- Sun (wedge rays + center) ---
+  
+
+
+
+
 
   const [texts, setTexts] = useState([
     {
@@ -93,6 +110,35 @@ const Whiteboard = () => {
       shadow: true,
     },
   ]);
+  const groupRef = useRef(null);
+
+  useEffect(() => {
+  const handleClickOutside = (e) => {
+    if (
+      penButtonRef.current &&
+      penSettingsRef.current &&
+      !penButtonRef.current.contains(e.target) &&
+      !penSettingsRef.current.contains(e.target)
+    ) {
+      setPenSettingsVisible(false);
+    }
+  };
+  document.addEventListener('mousedown', handleClickOutside);
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, []);
+
+
+
+
+  useEffect(() => {
+  if (drawMode !== DRAW_MODES.PAN && groupRef.current) {
+    // Reset the group's position
+    groupRef.current.position({ x: 0, y: 0 });
+
+    // Redraw layer to reflect position reset
+    groupRef.current.getLayer().batchDraw();
+  }
+}, [drawMode]);
 
   // useEffect(() => console.log(lines), [lines])
   const [connected, setConnected] = useState(false);
@@ -163,44 +209,133 @@ useEffect(() => {
   };
 
   const handlePromptSubmit = async () => {
-    setPopupVisible(false);
+  const result = await createObjectFromPrompt(promptText);
 
-    // You can now send promptText to your backend LLM endpoint:
-    // await fetch("/api/llm", { method: "POST", body: JSON.stringify({ prompt: promptText }) });
+  if (result && result.shapes) {
+    // Add shapes to canvas
+    setShapes((prevShapes) => [...prevShapes, ...result.shapes]);
 
-    console.log("Prompt sent to LLM:", promptText);
+    // Optionally handle text overlays
+    if (result.texts?.length > 0) {
+      setTexts((prevTexts) => [...prevTexts, ...result.texts]);
+    }
+  } else {
+    alert("No shapes received from AI.");
+  }
+
+  setPromptText("");
+  setPopupVisible(false);
+};
+
+
+  const getRelativePointerPosition = (stage) => {
+    const pointer = stage.getPointerPosition();
+    return {
+      x: pointer.x - stagePos.x,
+      y: pointer.y - stagePos.y,
+    };
   };
 
+
   const handleStageMouseDown = (e) => {
+    const stage = e.target.getStage();
+    const pos = getRelativePointerPosition(stage);
+
     if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseDown(e);
       return;
     }
+    if (drawMode === DRAW_MODES.SELECT) {
+      const clickedEmpty = e.target === stage;
+      if (clickedEmpty) {
+        setSelectedShapeIndices([]);
+      }
+      setSelectionBox({
+  x: pos.x,
+  y: pos.y,
+  width: 0,
+  height: 0,
+  startX: pos.x,
+  startY: pos.y,
+});
+
+
+      return;
+    }
     setIsPanning(true);
     panStart.current = { ...stagePos };
-    const pos = e.target.getStage().getPointerPosition();
     pointerStart.current = { x: pos.x, y: pos.y };
   };
 
   const handleStageMouseMove = (e) => {
+    const pos = getRelativePointerPosition(e.target.getStage());
+
     if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseMove(e);
       return;
     }
+    if (drawMode === DRAW_MODES.SELECT && selectionBox) {
+      setSelectionBox((prev) => ({
+        ...prev,
+        width: pos.x - prev.startX,
+height: pos.y - prev.startY,
+
+
+      }));
+    }
     if (!isPanning) return;
-    const pos = e.target.getStage().getPointerPosition();
     const dx = pos.x - pointerStart.current.x;
     const dy = pos.y - pointerStart.current.y;
-    setStagePos({
-      x: panStart.current.x + dx,
-      y: panStart.current.y + dy,
-    });
+    setStagePos({ x: panStart.current.x + dx, y: panStart.current.y + dy });
   };
 
   const handleStageMouseUp = (e) => {
     if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseUp(e);
       return;
+    }
+    if (drawMode === DRAW_MODES.SELECT && selectionBox) {
+      const box = {
+        x: Math.min(selectionBox.startX, selectionBox.startX + selectionBox.width) + stagePos.x,
+        y: Math.min(selectionBox.startY, selectionBox.startY + selectionBox.height) + stagePos.y,
+        width: Math.abs(selectionBox.width),
+        height: Math.abs(selectionBox.height),
+      };
+
+
+      const selectedIndices = shapes.map((shape, i) => {
+        let shapeX = shape.x ?? 0;
+let shapeY = shape.y ?? 0;
+let shapeW = shape.width ?? (shape.radius ? shape.radius * 2 : 0);
+let shapeH = shape.height ?? (shape.radius ? shape.radius * 2 : 0);
+
+// Adjust for non-rectangular types
+if (shape.points && Array.isArray(shape.points)) {
+  // For line or arrow, calculate bounding box from points
+  const xs = shape.points.filter((_, i) => i % 2 === 0);
+  const ys = shape.points.filter((_, i) => i % 2 !== 0);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  shapeX = minX;
+  shapeY = minY;
+  shapeW = maxX - minX;
+  shapeH = maxY - minY;
+}
+
+
+        return (
+  shapeX + shapeW + stagePos.x >= box.x &&
+  shapeX + stagePos.x <= box.x + box.width &&
+  shapeY + shapeH + stagePos.y >= box.y &&
+  shapeY + stagePos.y <= box.y + box.height
+) ? i : null;
+
+      }).filter(i => i !== null);
+
+      setSelectedShapeIndices(selectedIndices);
+      setSelectionBox(null);
     }
     setIsPanning(false);
   };
@@ -212,8 +347,9 @@ useEffect(() => {
       const pos = e.target.getStage().getPointerPosition();
       setLines([...lines, {
         points: [pos.x - stagePos.x, pos.y - stagePos.y],
-        stroke: '#2563eb',
-        strokeWidth: 3,
+stroke: brushSettings.strokeColor,
+strokeWidth: brushSettings.strokeWidth,
+
         globalCompositeOperation: 'source-over',
         lineCap: 'round',
       }]);
@@ -292,6 +428,33 @@ useEffect(() => {
           zIndex: 2,
         }}
       >
+            <button
+              onClick={() => setDrawMode(DRAW_MODES.SELECT)}
+              style={{
+                background: drawMode === DRAW_MODES.SELECT ? BUTTON_BG_ACTIVE : BUTTON_BG,
+                color: BUTTON_COLOR,
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px',
+                fontWeight: 600,
+                fontSize: 20,
+                cursor: 'pointer',
+                boxShadow: drawMode === DRAW_MODES.SELECT
+                  ? '0 2px 8px rgba(37,99,235,0.15)'
+                  : '0 1px 4px rgba(0,0,0,0.04)',
+                transition: 'background 0.2s, box-shadow 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 44,
+                height: 44,
+              }}
+              title="Select"
+            >
+              <SquareDashed />
+            </button>
+
+
         <button
           onClick={() => setDrawMode(DRAW_MODES.PAN)}
           style={{
@@ -318,7 +481,11 @@ useEffect(() => {
           <Hand size={24} />
         </button>
         <button
-          onClick={() => setDrawMode(DRAW_MODES.PEN)}
+          ref={penButtonRef}
+          onClick={() => {
+    setDrawMode(DRAW_MODES.PEN);
+    setPenSettingsVisible((prev) => !prev);
+  }}
           style={{
             background: drawMode === DRAW_MODES.PEN ? BUTTON_BG_ACTIVE : BUTTON_BG,
             color: BUTTON_COLOR,
@@ -342,6 +509,8 @@ useEffect(() => {
         >
           <Pencil />
         </button>
+        
+
         <button
           onClick={() => setDrawMode(DRAW_MODES.ERASER)}
           style={{
@@ -369,6 +538,50 @@ useEffect(() => {
         </button>
       </div>
 
+{penSettingsVisible && (
+  <div
+  ref={penSettingsRef}
+    style={{
+      position: 'absolute',
+      top: penButtonRef.current?.getBoundingClientRect().bottom + 8,
+      left: penButtonRef.current?.getBoundingClientRect().left,
+      background: '#fff',
+      border: '1px solid #ccc',
+      borderRadius: 8,
+      padding: 12,
+      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+      zIndex: 100,
+    }}
+  >
+    <label style={{ display: 'block', marginBottom: 8 }}>
+      Brush Size:
+      <input
+        type="range"
+        min="1"
+        max="20"
+        value={brushSettings.strokeWidth}
+        onChange={(e) =>
+          setBrushSettings((s) => ({ ...s, strokeWidth: parseInt(e.target.value) }))
+        }
+        style={{ width: '100%' }}
+      />
+    </label>
+    <label>
+      Brush Color:
+      <input
+        type="color"
+        value={brushSettings.strokeColor}
+        onChange={(e) =>
+          setBrushSettings((s) => ({ ...s, strokeColor: e.target.value }))
+        }
+        style={{ width: '100%' }}
+      />
+    </label>
+  </div>
+)}
+
+
+
       <div
         style={{
           position: 'absolute',
@@ -383,180 +596,376 @@ useEffect(() => {
         }}
       >
         <Stage
-          width={dimensions.width}
-          height={dimensions.height}
-          x={stagePos.x}
-          y={stagePos.y}
-          onMouseDown={handleStageMouseDown}
-          onMousemove={handleStageMouseMove}
-          onMouseup={handleStageMouseUp}
-          onContextMenu={handleContextMenu}
-          style={{
-            background: '#fff',
-            cursor:
-              drawMode === DRAW_MODES.PEN
-                ? 'crosshair'
-                : drawMode === DRAW_MODES.ERASER
-                ? 'cell'
-                : 'grab',
-            transition: 'background 0.2s',
-            width: '100vw',
-            height: '100vh',
-            display: 'block',
-          }}
-        >
-          <Layer>
-            {shapes.map((shape, i) => {
-              if (shape.type === 'circle') {
-                return (
-                  <Circle
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    radius={shape.radius}
-                    fill={shape.color}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              } else if (shape.type === 'rectangle') {
-                return (
-                  <Rect
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    width={shape.width}
-                    height={shape.height}
-                    fill={shape.color}
-                    cornerRadius={shape.cornerRadius}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              }else if (shape.type === 'text') {
-                return (
-                  <Text
-                  key={`text-${i}`}
-                  x={shape.x}
-                  y={shape.y}
-                  text={shape.text}
-                  fontSize={shape.fontSize}
-                  fill={shape.color}
-                  fontStyle={shape.fontStyle || 'normal'}
-                  shadowBlur={shape.shadow ? 8 : 0}
-                  shadowColor={shape.color}
-                  draggable={drawMode === DRAW_MODES.PAN}
-                />
-                );
-              }else if (shape.type === 'line') {
-                return (
-                  <Line
-                  key={`free-${i}`}
-                  points={shape.points}
-                  stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
-                  strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
-                  tension={0.5}
-                  lineCap="round"
-                  globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
-                  shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
-                  shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
-                  draggable={drawMode === DRAW_MODES.PAN}
-                />
-                );
-              }else if (shape.type === 'arrow') {
-                return (
-                  <Arrow
-                  key={`free-${i}`}
-                  points={shape.points}
-                  stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
-                  strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
-                  tension={0.5}
-                  lineCap="round"
-                  globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
-                  shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
-                  shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
-                  draggable={drawMode === DRAW_MODES.PAN}
-                />
-                );
-              }else if (shape.type === 'arc') {
-                return (
-                  <Arc
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    innerRadius={shape.innerRadius}
-                    outerRadius={shape.outerRadius}
-                    fill={shape.color}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    angle = {shape.angle}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              }else if (shape.type === 'ring') {
-                return (
-                  <Ring
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    innerRadius={shape.innerRadius}
-                    outerRadius={shape.outerRadius}
-                    fill={shape.color}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              }else if (shape.type === 'regularPolygon') {
-                return (
-                  <RegularPolygon
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    sides = {shape.sides}
-                    radius = {shape.radius}
-                    fill={shape.color}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              }else if (shape.type === 'wedge') {
-                return (
-                  <Wedge
-                    key={i}
-                    x={shape.x}
-                    y={shape.y}
-                    radius={shape.radius}
-                    rotation={shape.rotation}
-                    fill={shape.color}
-                    shadowBlur={shape.shadow ? 16 : 0}
-                    shadowColor={shape.color}
-                    angle = {shape.angle}
-                    draggable={drawMode === DRAW_MODES.PAN}
-                  />
-                );
-              }
-              return null;
-            })}
+  width={dimensions.width}
+  height={dimensions.height}
+  x={stagePos.x}
+  y={stagePos.y}
+  onMouseDown={handleStageMouseDown}
+  onMousemove={handleStageMouseMove}
+  onMouseup={handleStageMouseUp}
+  onContextMenu={handleContextMenu}
+  style={{
+    background: '#fff',
+    cursor:
+      drawMode === DRAW_MODES.PEN
+        ? 'crosshair'
+        : drawMode === DRAW_MODES.ERASER
+        ? 'cell'
+        : 'grab',
+    transition: 'background 0.2s',
+    width: '100vw',
+    height: '100vh',
+    display: 'block',
+  }}
+>
+  <Layer>
+    {selectionBox && (
+      <Rect
+        x={selectionBox.startX}
+        y={selectionBox.startY}
+        width={selectionBox.width}
+        height={selectionBox.height}
+        stroke="blue"
+        dash={[4, 4]}
+        strokeWidth={1}
+      />
+    )}
 
-            {lines.map((line, i) => (
+    {selectedShapeIndices.length > 0 ? (
+      <Group
+      ref={groupRef}
+        draggable={drawMode === DRAW_MODES.PAN || drawMode === DRAW_MODES.SELECT}
+        onDragEnd={(e) => {
+          const dx = e.target.x();
+          const dy = e.target.y();
+          const updated = shapes.map((s, idx) => {
+            if (selectedShapeIndices.includes(idx)) {
+              if (s.points) {
+                return {
+                  ...s,
+                  points: s.points.map((p, j) => (j % 2 === 0 ? p + dx : p + dy))
+                };
+              }
+              return {
+                ...s,
+                x: s.x + dx,
+                y: s.y + dy,
+              };
+            }
+            return s;
+          });
+          setShapes(updated);
+          e.target.position({ x: 0, y: 0 });
+        }}
+      >
+        {shapes.map((shape, i) => {
+          if (!selectedShapeIndices.includes(i)) return null;
+          if (shape.type === 'circle') {
+            return (
+              <Circle
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                radius={shape.radius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'rectangle') {
+            return (
+              <Rect
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                width={shape.width}
+                height={shape.height}
+                fill={shape.color}
+                cornerRadius={shape.cornerRadius}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'text') {
+            return (
+              <Text
+                key={`text-${i}`}
+                x={shape.x}
+                y={shape.y}
+                text={shape.text}
+                fontSize={shape.fontSize}
+                fill={shape.color}
+                fontStyle={shape.fontStyle || 'normal'}
+                shadowBlur={shape.shadow ? 8 : 0}
+                shadowColor={shape.color}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'line') {
+            return (
               <Line
                 key={`free-${i}`}
-                points={line.points}
-                stroke={line.stroke}
-                strokeWidth={line.strokeWidth}
+                points={shape.points}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
                 tension={0.5}
-                lineCap={line.lineCap}
-                globalCompositeOperation={line.globalCompositeOperation}
-                // shadowBlur={line.mode === DRAW_MODES.ERASER ? 0 : 4}
-                // shadowColor={line.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                lineCap="round"
+                globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                
               />
-            ))}
-          </Layer>
-        </Stage>
+            );
+          } else if (shape.type === 'arrow') {
+            return (
+              <Arrow
+                key={`free-${i}`}
+                points={shape.points}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+                tension={0.5}
+                lineCap="round"
+                globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+              />
+            );
+          } else if (shape.type === 'arc') {
+            return (
+              <Arc
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                innerRadius={shape.innerRadius}
+                outerRadius={shape.outerRadius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                angle={shape.angle}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'ring') {
+            return (
+              <Ring
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                innerRadius={shape.innerRadius}
+                outerRadius={shape.outerRadius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'regularPolygon') {
+            return (
+              <RegularPolygon
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                sides={shape.sides}
+                radius={shape.radius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke}
+strokeWidth={selectedShapeIndices.includes(i) ? 2 : (shape.stroke ? (shape.strokeWidth ?? 1) : 0)}
+
+              />
+            );
+          } else if (shape.type === 'wedge') {
+            return (
+              <Wedge
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                radius={shape.radius}
+                rotation={shape.rotation}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                angle={shape.angle}
+                 stroke={selectedShapeIndices.includes(i) ? 'blue' : shape.stroke ?? undefined}
+  strokeWidth={selectedShapeIndices.includes(i) ? 2 : shape.strokeWidth ?? 1}
+              />
+            );
+          }
+          return null;
+        })}
+      </Group>
+    ) : null}
+
+    {shapes.map((shape, i) => {
+      if (selectedShapeIndices.includes(i)) return null;
+      if (shape.type === 'circle') {
+        return (
+          <Circle
+            key={i}
+            x={shape.x}
+            y={shape.y}
+            radius={shape.radius}
+            fill={shape.color}
+            shadowBlur={shape.shadow ? 16 : 0}
+            shadowColor={shape.color}
+            draggable={drawMode === DRAW_MODES.PAN}
+          />
+        );
+      }else if (shape.type === 'rectangle') {
+            return (
+              <Rect
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                width={shape.width}
+                height={shape.height}
+                fill={shape.color}
+                cornerRadius={shape.cornerRadius}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                stroke={shape.stroke ?? undefined}
+                strokeWidth={shape.strokeWidth ?? 1}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'text') {
+            return (
+              <Text
+                key={`text-${i}`}
+                x={shape.x}
+                y={shape.y}
+                text={shape.text}
+                fontSize={shape.fontSize}
+                fill={shape.color}
+                fontStyle={shape.fontStyle || 'normal'}
+                shadowBlur={shape.shadow ? 8 : 0}
+                shadowColor={shape.color}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'line') {
+            return (
+              <Line
+                key={`free-${i}`}
+                points={shape.points}
+                stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
+                strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
+                tension={0.5}
+                lineCap="round"
+                globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'arrow') {
+            return (
+              <Arrow
+                key={`free-${i}`}
+                points={shape.points}
+                stroke={shape.mode === DRAW_MODES.ERASER ? '#fff' : '#2563eb'}
+                strokeWidth={shape.mode === DRAW_MODES.ERASER ? 16 : 3}
+                tension={0.5}
+                lineCap="round"
+                globalCompositeOperation={shape.mode === DRAW_MODES.ERASER ? 'destination-out' : 'source-over'}
+                shadowBlur={shape.mode === DRAW_MODES.ERASER ? 0 : 4}
+                shadowColor={shape.mode === DRAW_MODES.ERASER ? undefined : '#2563eb'}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'arc') {
+            return (
+              <Arc
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                innerRadius={shape.innerRadius}
+                outerRadius={shape.outerRadius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                angle={shape.angle}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'ring') {
+            return (
+              <Ring
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                innerRadius={shape.innerRadius}
+                outerRadius={shape.outerRadius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'regularPolygon') {
+            return (
+              <RegularPolygon
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                sides={shape.sides}
+                radius={shape.radius}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          } else if (shape.type === 'wedge') {
+            return (
+              <Wedge
+                key={i}
+                x={shape.x}
+                y={shape.y}
+                radius={shape.radius}
+                rotation={shape.rotation}
+                fill={shape.color}
+                shadowBlur={shape.shadow ? 16 : 0}
+                shadowColor={shape.color}
+                angle={shape.angle}
+                draggable={drawMode === DRAW_MODES.PAN}
+              />
+            );
+          }
+      return null;
+    })}
+
+    {lines.map((line, i) => (
+      <Line
+        key={`free-${i}`}
+        points={line.points}
+        stroke={line.stroke}
+        strokeWidth={line.strokeWidth}
+        tension={0.5}
+        lineCap={line.lineCap}
+        globalCompositeOperation={line.globalCompositeOperation}
+        draggable={drawMode === DRAW_MODES.PAN}
+      />
+    ))}
+  </Layer>
+</Stage>
+
+
         {popupVisible && (
         <div
           style={{
@@ -573,7 +982,7 @@ useEffect(() => {
           <textarea
             rows={3}
             cols={30}
-            placeholder="Ask the LLM to draw something..."
+            placeholder="Ask the AI to draw something"
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
           />
