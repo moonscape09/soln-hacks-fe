@@ -18,6 +18,11 @@ const DRAW_MODES = {
 };
 
 const Whiteboard = () => {
+  const [popupVisible, setPopupVisible] = useState(false);
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
+  const [promptText, setPromptText] = useState("");
+
+
   const [drawMode, setDrawMode] = useState(DRAW_MODES.PAN);
   const [lines, setLines] = useState([]);
   const isDrawingRef = useRef(false);
@@ -89,7 +94,24 @@ const Whiteboard = () => {
     },
   ]);
 
+
+  
   // Pan handlers
+  const handleContextMenu = (e) => {
+    e.evt.preventDefault();
+    setPopupPos({ x: e.evt.clientX, y: e.evt.clientY });
+    setPopupVisible(true);
+  };
+
+  const handlePromptSubmit = async () => {
+    setPopupVisible(false);
+
+    // You can now send promptText to your backend LLM endpoint:
+    // await fetch("/api/llm", { method: "POST", body: JSON.stringify({ prompt: promptText }) });
+
+    console.log("Prompt sent to LLM:", promptText);
+  };
+
   const handleStageMouseDown = (e) => {
     if (drawMode === DRAW_MODES.PEN || drawMode === DRAW_MODES.ERASER) {
       handleMouseDown(e);
@@ -295,6 +317,7 @@ const Whiteboard = () => {
           onMouseDown={handleStageMouseDown}
           onMousemove={handleStageMouseMove}
           onMouseup={handleStageMouseUp}
+          onContextMenu={handleContextMenu}
           style={{
             background: '#fff',
             cursor:
@@ -462,6 +485,31 @@ const Whiteboard = () => {
             ))}
           </Layer>
         </Stage>
+        {popupVisible && (
+        <div
+          style={{
+            position: "absolute",
+            top: popupPos.y,
+            left: popupPos.x,
+            background: "white",
+            padding: "10px",
+            boxShadow: "0 0 5px gray",
+            borderRadius: "4px",
+            zIndex: 10
+          }}
+        >
+          <textarea
+            rows={3}
+            cols={30}
+            placeholder="Ask the LLM to draw something..."
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+          />
+          <br />
+          <button onClick={handlePromptSubmit}>Submit</button>
+          <button onClick={() => setPopupVisible(false)}>Cancel</button>
+        </div>
+      )}
       </div>
     </div>
   );
